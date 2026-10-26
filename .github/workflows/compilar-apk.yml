@@ -1,0 +1,66 @@
+name: Compilar APK ABYSSAL READER
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compilar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+      - name: Descomprimir fuente
+        run: |
+          unzip -t ABYSSAL_READER_SOURCE_FINAL.zip
+          unzip -q ABYSSAL_READER_SOURCE_FINAL.zip
+          test -f AbyssalReader/settings.gradle.kts
+          test -f AbyssalReader/gradlew
+      - name: Preparar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Preparar Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Instalar SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Preparar Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Compilar y probar
+        working-directory: AbyssalReader
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest --stacktrace --no-daemon 2>&1 | tee ../build.log
+      - name: Validar APK
+        shell: bash
+        run: |
+          set -e
+          apk="AbyssalReader/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+          cp "$apk" ABYSSAL_READER_FINAL.apk
+          sha256sum ABYSSAL_READER_FINAL.apk > apk.sha256
+      - name: Guardar APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ABYSSAL_READER_FINAL
+          path: ABYSSAL_READER_FINAL.apk
+          if-no-files-found: error
+      - name: Guardar registros
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ABYSSAL_READER_LOGS
+          path: |
+            build.log
+            apk.sha256
+            AbyssalReader/app/build/test-results/
+            AbyssalReader/app/build/reports/tests/
+          if-no-files-found: ignore
